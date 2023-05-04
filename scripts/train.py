@@ -11,6 +11,7 @@ from torchinfo import summary
 import yaml
 import json
 import sys
+import shutil
 
 sys.path.append("..")
 from lib.utils import (
@@ -124,7 +125,6 @@ def train(
     verbose=1,
     plot=False,
     log=None,
-    save=None,
 ):
     if torch.__version__ >= "2.0.0" and compile_model:
         model = torch.compile(model)
@@ -172,15 +172,15 @@ def train(
     out_str = f"Early stopping at epoch: {epoch+1}\n"
     out_str += f"Best at epoch {best_epoch+1}:\n"
     out_str += "Train Loss = %.5f\n" % train_loss_list[best_epoch]
-    out_str += "Train RMSE = %.5f, MAE = %.5f, MAPE = %.5f\n" % (
-        train_rmse,
+    out_str += "Train MAE = %.5f, RMSE = %.5f, MAPE = %.5f\n" % (
         train_mae,
+        train_rmse,
         train_mape,
     )
     out_str += "Val Loss = %.5f\n" % val_loss_list[best_epoch]
-    out_str += "Val RMSE = %.5f, MAE = %.5f, MAPE = %.5f" % (
-        val_rmse,
+    out_str += "Val MAE = %.5f, RMSE = %.5f, MAPE = %.5f" % (
         val_mae,
+        val_rmse,
         val_mape,
     )
     print_log(out_str, log=log)
@@ -194,8 +194,8 @@ def train(
         plt.legend()
         plt.show()
 
-    if save:
-        torch.save(best_state_dict, save)
+    torch.save(best_state_dict, modelpt_path)
+
     return model
 
 
@@ -206,23 +206,31 @@ def test_model(model, testset_loader, log=None):
 
     start = time.time()
     y_true, y_pred = predict(model, testset_loader)
+    np.save(path + f'/{model_name}_prediction.npy', y_pred)
+    np.save(path + f'/{model_name}_groundtruth.npy', y_true)
     end = time.time()
 
     rmse_all, mae_all, mape_all = RMSE_MAE_MAPE(y_true, y_pred)
-    out_str = "All Steps RMSE = %.5f, MAE = %.5f, MAPE = %.5f\n" % (
-        rmse_all,
+    out_str = "All Steps MAE = %.5f, RMSE = %.5f, MAPE = %.5f\n" % (
         mae_all,
+        rmse_all,
         mape_all,
     )
     out_steps = y_pred.shape[1]
+    metrics_name = ['mae', 'rmse', 'mape']
+    result_df = pd.DataFrame(columns=metrics_name)
+    result_df = result_df.append({'mae':mae_all, 'rmse':rmse_all, 'mape':mape_all}, ignore_index=True)
     for i in range(out_steps):
         rmse, mae, mape = RMSE_MAE_MAPE(y_true[:, i, :], y_pred[:, i, :])
-        out_str += "Step %d RMSE = %.5f, MAE = %.5f, MAPE = %.5f\n" % (
+        result_df = result_df.append({'mae':mae, 'rmse':rmse, 'mape':mape}, ignore_index=True)
+        out_str += "Step %d MAE = %.5f, RMSE = %.5f, MAPE = %.5f\n" % (
             i + 1,
-            rmse,
             mae,
+            rmse,
             mape,
         )
+    result_df.to_csv(os.path.join(path, 'result.csv'))
+    result_df.to_excel(os.path.join(path, 'result.xlsx'))
 
     print_log(out_str, log=log, end="")
     print_log("Inference time: %.2f s" % (end - start), log=log)
@@ -255,9 +263,18 @@ if __name__ == "__main__":
     model_class = model_select(model_name)
     model_name = model_class.__name__
 
+    now = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    path = f"../save/{model_name}/{model_name}-{dataset}-{now}"
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    # -------------------------------- load config ------------------------------- #
+
     with open(f"../configs/{model_name}.yaml", "r") as f:
         cfg = yaml.safe_load(f)
     cfg = cfg[dataset]
+
+    shutil.copy2(f'../configs/{model_name}.yaml', path)
 
     # -------------------------------- load model -------------------------------- #
 
@@ -268,12 +285,11 @@ if __name__ == "__main__":
 
     model = model_class(**cfg["model_args"])
 
+    shutil.copy2(f'../models/{model_class.__name__}.py', path)
+
     # ------------------------------- make log file ------------------------------ #
 
-    now = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    log_path = f"../logs/{model_name}"
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
+    log_path = path
     log = os.path.join(log_path, f"{model_name}-{dataset}-{now}.log")
     log = open(log, "a")
     log.seek(0)
@@ -298,10 +314,7 @@ if __name__ == "__main__":
 
     # --------------------------- set model saving path -------------------------- #
 
-    save_path = f"../saved_models/{model_name}"
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    save = os.path.join(save_path, f"{model_name}-{dataset}-{now}.pt")
+    modelpt_path = os.path.join(path, f"{model_name}-{dataset}-{now}.pt")
 
     # ---------------------- set loss, optimizer, scheduler ---------------------- #
 
@@ -371,7 +384,6 @@ if __name__ == "__main__":
         compile_model=args.compile,
         verbose=1,
         log=log,
-        save=save,
     )
 
     test_model(model, testset_loader, log=log)

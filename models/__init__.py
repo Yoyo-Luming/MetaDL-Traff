@@ -9,7 +9,7 @@ from .STMetaLSTM import STMetaLSTM
 from .STMetaGRU import STMetaGRU
 from .STMetaAttention import STMetaAttention
 
-from .GraphWaveNet import GWNET
+from .GWNET import GWNET
 from .MTGNN import MTGNN
 from .STMetaGCRU import STMetaGCRU
 
