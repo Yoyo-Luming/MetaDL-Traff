@@ -9,23 +9,27 @@ METRLA:
   time_of_day: True
   day_of_week: True
   
-  lr: 0.002
+  lr: 0.001
   weight_decay: 0.0001
-  milestones: [80]
+  early_stop: 20
+  milestones: [80, 100]
   clip_grad: False
-  batch_size: 64
+  batch_size: 128
   max_epochs: 200
   use_cl: True
   cl_step_size: 2500
 
   pass_device: True
 
+# If use meta_att only, addaptadj should be False
+
   model_args:
     device: None 
     num_nodes: 207
-    in_dim: 1
+    in_dim: 2
     out_dim: 12
     adj_path: "../data/METRLA/adj_mx.pkl"
+    # adj_path: False
     adj_type: "doubletransition"
     dropout: 0.3
     gcn_bool: True
@@ -37,8 +41,9 @@ METRLA:
     node_embedding_dim: 64
     learner_hidden_dim: 128
     z_dim: 64
-    add_meta_adj: False
-    add_meta_att: True
+    add_meta_adj: True
+    add_meta_att: False
+    cheb_k: 3
 
 PEMSBAY:
   num_nodes: 325
@@ -52,7 +57,7 @@ PEMSBAY:
   
   lr: 0.001
   weight_decay: 0.0001
-  milestones: [50]
+  milestones: [80]
   clip_grad: False
   batch_size: 64
   max_epochs: 200

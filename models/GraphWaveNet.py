@@ -138,20 +138,24 @@ class gcn(nn.Module):
     def forward(self,x,support):
         out = [x]
         if self.meta_adj is not None:
-            x1 = self.nconv(x,self.meta_adj)
-            out.append(x1)
-            for k in range(2, self.order + 1):
-                x2 = self.nconv(x1,self.meta_adj)
-                out.append(x2)
-                x1 = x2
+            support_num = self.meta_adj.shape[1]
+            for i in range(support_num):
+                a = self.meta_adj[:,i,:,:]
+                x1 = self.nconv(x,a)
+                out.append(x1)
+                for k in range(2, self.order + 1):
+                    x2 = self.nconv(x1,a)
+                    out.append(x2)
+                    x1 = x2
 
-        for a in support:
-            x1 = self.nconv(x,a)
-            out.append(x1)
-            for k in range(2, self.order + 1):
-                x2 = self.nconv(x1,a)
-                out.append(x2)
-                x1 = x2
+        if support is not None and len(support):
+            for a in support:
+                x1 = self.nconv(x,a)
+                out.append(x1)
+                for k in range(2, self.order + 1):
+                    x2 = self.nconv(x1,a)
+                    out.append(x2)
+                    x1 = x2
         
         h = torch.cat(out,dim=1)
         # print('h', h.shape)
@@ -187,9 +191,12 @@ class GWNET(nn.Module):
                  node_embedding_dim=64,
                  learner_hidden_dim=128,
                  z_dim=32,
-                 in_steps=12
+                 in_steps=12,
+                 cheb_k=3,
                  ):
         super(GWNET, self).__init__()
+        self.num_nodes = num_nodes
+        self.cheb_k = cheb_k
         if adj_path:
             adj_mx = load_adj(adj_path, adj_type)
             supports = [torch.tensor(i).to(device) for i in adj_mx]
@@ -229,22 +236,28 @@ class GWNET(nn.Module):
         if supports is not None:
             self.supports_len += len(supports)
 
-        if gcn_bool and addaptadj:
-            if aptinit is None:
-                if supports is None:
-                    self.supports = []
-                self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)
-                self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)
-                self.supports_len +=1
-            else:
-                if supports is None:
-                    self.supports = []
-                m, p, n = torch.svd(aptinit)
-                initemb1 = torch.mm(m[:, :10], torch.diag(p[:10] ** 0.5))
-                initemb2 = torch.mm(torch.diag(p[:10] ** 0.5), n[:, :10].t())
-                self.nodevec1 = nn.Parameter(initemb1, requires_grad=True).to(device)
-                self.nodevec2 = nn.Parameter(initemb2, requires_grad=True).to(device)
-                self.supports_len += 1
+        if gcn_bool:
+            if self.add_meta_adj:
+                if supports is not None:
+                    self.supports_len += 2
+                else:
+                    self.supports_len = self.cheb_k
+            elif self.addaptadj:
+                if aptinit is None:
+                    if supports is None:
+                        self.supports = []
+                    self.nodevec1 = nn.Parameter(torch.randn(num_nodes, 10).to(device), requires_grad=True).to(device)
+                    self.nodevec2 = nn.Parameter(torch.randn(10, num_nodes).to(device), requires_grad=True).to(device)
+                    self.supports_len +=1
+                else:
+                    if supports is None:
+                        self.supports = []
+                    m, p, n = torch.svd(aptinit)
+                    initemb1 = torch.mm(m[:, :10], torch.diag(p[:10] ** 0.5))
+                    initemb2 = torch.mm(torch.diag(p[:10] ** 0.5), n[:, :10].t())
+                    self.nodevec1 = nn.Parameter(initemb1, requires_grad=True).to(device)
+                    self.nodevec2 = nn.Parameter(initemb2, requires_grad=True).to(device)
+                    self.supports_len += 1
 
     
         for b in range(blocks):
@@ -320,18 +333,37 @@ class GWNET(nn.Module):
                 )    
 
             if self.add_meta_adj:
-                self.adj_learner = nn.Sequential(
+                # self.adj_learner = nn.Sequential(
+                #     nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                #     nn.ReLU(inplace=True),
+                #     nn.Linear(learner_hidden_dim, 30),
+                # )    
+                self.adj_learner1 = nn.Sequential(
                     nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
                     nn.ReLU(inplace=True),
                     nn.Linear(learner_hidden_dim, 30),
                 )    
+                self.adj_learner2 = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, 30),
+                )                    
             if self.add_meta_att:
                 self.att_learner = nn.Sequential(
                     nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
                     nn.ReLU(inplace=True),
                     nn.Linear(learner_hidden_dim, 30),
                 )                
-
+                self.att_learner1 = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, 30),
+                )                
+                self.att_learner2 = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, 30),
+                )                
 
     def forward(self, input): # ! (B, C, N, T)
         batch_size = input.shape[0]
@@ -339,8 +371,9 @@ class GWNET(nn.Module):
         if self.use_meta:
             tod = input[..., 1]  # (B, T_in, N)
             dow = input[..., 2]  # (B, T_in, N)
-            input = input[..., :1]  # (B, T_in, N, 1)
+            input = input[..., :2]  # (B, T_in, N, 1)
                     # use the last time step to represent the temporal location of the time seires
+            x = input[..., :1]
             tod_embedding = self.tod_onehots[(tod[:, -1, :] * 24).long()]  # (B, N, 24)
             dow_embedding = self.dow_onehots[dow[:, -1, :].long()]  # (B, N, 7)
             node_embedding = self.node_embedding.expand(
@@ -352,7 +385,7 @@ class GWNET(nn.Module):
             )  # (B, N, st_emb_dim)
 
             if self.z_dim > 0:
-                z_input = input.squeeze(dim=-1).transpose(1, 2)
+                z_input = x.squeeze(dim=-1).transpose(1, 2)
 
                 mu = self.mu_estimator(z_input)  # (B, N, z_dim)
                 logvar = self.logvar_estimator(z_input)  # (B, N, z_dim)
@@ -367,17 +400,33 @@ class GWNET(nn.Module):
                 )  # (B, N, st_emb_dim+z_dim)
 
             if self.add_meta_adj:
-                adj_embeddings = self.adj_learner(meta_input)
-                meta_adp = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [adj_embeddings, adj_embeddings.transpose(1, 2)])), dim=-1)
-                for i in range(self.blocks * self.layers):
-                    self.gconv[i].set_meta_adj(meta_adp)
+                # adj_embeddings = self.adj_learner(meta_input)
+                # meta_adp = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [adj_embeddings, adj_embeddings.transpose(1, 2)])), dim=-1)
+                source_adj_embeddings = self.adj_learner1(meta_input)
+                target_adj_embeddings = self.adj_learner2(meta_input)
+                meta_adj = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [source_adj_embeddings, target_adj_embeddings.transpose(1, 2)])), dim=-1)
+                if self.supports is not None:
+                    support_set = [meta_adj, meta_adj.transpose(1,2)]
+                    # meta_adj = torch.unsqueeze(meta_adj,1)
+                    support_set = torch.stack(support_set,1)
+                    for i in range(self.blocks * self.layers):
+                        self.gconv[i].set_meta_adj(support_set)
+                else:
+                    support_set = [torch.eye(self.num_nodes).to(x.device).expand(batch_size, self.num_nodes, self.num_nodes) , meta_adj, meta_adj.transpose(1,2)]
+                    for k in range(2, self.cheb_k):
+                        support_set.append(torch.matmul(2 * meta_adj, support_set[-1]) - support_set[-2])
+                    support_set = torch.stack(support_set,1)
+                    for i in range(self.blocks * self.layers):
+                        self.gconv[i].set_meta_adj(support_set)
 
             if self.add_meta_att:
                 att_embeddings = self.att_learner(meta_input)
-                meta_att = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [att_embeddings, att_embeddings.transpose(1, 2)])), dim=-1)
+                meta_att = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [att_embeddings, att_embeddings.transpose(1, 2)])), dim=-1)                
+                # source_att_embeddings = self.att_learner1(meta_input)
+                # target_att_embeddings = self.att_learner2(meta_input)
+                # meta_att = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [source_att_embeddings, target_att_embeddings.transpose(1, 2)])), dim=-1)
                 for i in range(self.blocks * self.layers):
                     self.gconv[i].set_meta_att(meta_att)               
-
 
         input = input.permute(0, 3, 2, 1)
         in_len = input.size(3)
