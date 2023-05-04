@@ -9,11 +9,8 @@ from .STMetaLSTM import STMetaLSTM
 from .STMetaGRU import STMetaGRU
 from .STMetaAttention import STMetaAttention
 
-from .AGCRN import AGCRN
 from .GraphWaveNet import GWNET
 from .MTGNN import MTGNN
-from .STWA import STWA
-from .STID import STID
 from .STMetaGCRU import STMetaGCRU
 
 
@@ -40,17 +37,11 @@ def model_select(name):
         return STMetaGCRU
     elif name in ("STMETAATTN", "STMETAATTENTION", "STMETATRANSFORMER"):
         return STMetaAttention
-
-    elif name == "AGCRN":
-        return AGCRN
     elif name in ("GWNET", "GRAPHWAVENET", "GWN"):
         return GWNET
     elif name == "MTGNN":
         return MTGNN
-    elif name == "STWA":
-        return STWA
-    elif name == "STID":
-        return STID
+
 
     else:
         raise NotImplementedError
