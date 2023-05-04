@@ -1,0 +1,229 @@
+METRLA
+Trainset:	x-(23974, 12, 207, 3)	y-(23974, 12, 207, 1)
+Valset:  	x-(3425, 12, 207, 3)  	y-(3425, 12, 207, 1)
+Testset:	x-(6850, 12, 207, 3)	y-(6850, 12, 207, 1)
+
+--------- STMetaAGCRU ---------
+{
+    "num_nodes": 207,
+    "in_steps": 12,
+    "out_steps": 12,
+    "time_of_day": true,
+    "day_of_week": true,
+    "lr": 0.002,
+    "weight_decay": 0,
+    "early_stop": 30,
+    "milestones": [
+        50,
+        100
+    ],
+    "clip_grad": false,
+    "batch_size": 64,
+    "max_epochs": 200,
+    "use_cl": false,
+    "cl_step_size": 2500,
+    "pass_device": true,
+    "model_args": {
+        "device": "cuda:0",
+        "num_nodes": 207,
+        "node_emb_file": "../data/METRLA/spatial_embeddings.npz",
+        "adj_path": "../data/METRLA/adj_mx.pkl",
+        "adj_type": "doubletransition",
+        "in_steps": 12,
+        "out_steps": 12,
+        "input_dim": 1,
+        "output_dim": 1,
+        "gru_hidden_dim": 64,
+        "tod_embedding_dim": 24,
+        "dow_embedding_dim": 7,
+        "node_embedding_dim": 64,
+        "learner_hidden_dim": 128,
+        "z_dim": 64,
+        "num_layers": 1,
+        "seq2seq": true,
+        "cheb_k": 3,
+        "addaptadj": true
+    }
+}
+==========================================================================================
+Layer (type:depth-idx)                   Output Shape              Param #
+==========================================================================================
+STMetaAGCRU                              [64, 12, 207, 1]          30,636
+├─Sequential: 1-1                        [64, 207, 64]             --
+│    └─Linear: 2-1                       [64, 207, 32]             416
+│    └─Tanh: 2-2                         [64, 207, 32]             --
+│    └─Linear: 2-3                       [64, 207, 32]             1,056
+│    └─Tanh: 2-4                         [64, 207, 32]             --
+│    └─Linear: 2-5                       [64, 207, 64]             2,112
+├─Sequential: 1-2                        [64, 207, 64]             --
+│    └─Linear: 2-6                       [64, 207, 32]             416
+│    └─Tanh: 2-7                         [64, 207, 32]             --
+│    └─Linear: 2-8                       [64, 207, 32]             1,056
+│    └─Tanh: 2-9                         [64, 207, 32]             --
+│    └─Linear: 2-10                      [64, 207, 64]             2,112
+├─Sequential: 1-3                        [64, 207, 128]            --
+│    └─Linear: 2-11                      [64, 207, 128]            20,480
+├─ModuleList: 1-4                        --                        --
+│    └─STMetaGCRUEncoder: 2-12           [64, 12, 207, 64]         --
+│    │    └─STMetaGCRUCell: 3-1          [64, 207, 64]             87,552
+│    │    └─STMetaGCRUCell: 3-2          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-3          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-4          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-5          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-6          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-7          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-8          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-9          [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-10         [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-11         [64, 207, 64]             (recursive)
+│    │    └─STMetaGCRUCell: 3-12         [64, 207, 64]             (recursive)
+├─Sequential: 1-5                        [64, 207, 128]            --
+│    └─Linear: 2-13                      [64, 207, 128]            20,480
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-14              [64, 207, 64]             --
+│    │    └─STMetaGCN: 3-13              [64, 207, 128]            58,368
+│    │    └─STMetaGCN: 3-14              [64, 207, 64]             29,184
+├─Sequential: 1-7                        [64, 207, 1]              --
+│    └─Linear: 2-15                      [64, 207, 1]              65
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-16              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-15              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-16              [64, 207, 64]             (recursive)
+├─Sequential: 1-9                        [64, 207, 1]              (recursive)
+│    └─Linear: 2-17                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-18              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-17              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-18              [64, 207, 64]             (recursive)
+├─Sequential: 1-11                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-19                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-20              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-19              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-20              [64, 207, 64]             (recursive)
+├─Sequential: 1-13                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-21                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-22              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-21              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-22              [64, 207, 64]             (recursive)
+├─Sequential: 1-15                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-23                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-24              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-23              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-24              [64, 207, 64]             (recursive)
+├─Sequential: 1-17                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-25                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-26              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-25              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-26              [64, 207, 64]             (recursive)
+├─Sequential: 1-19                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-27                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-28              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-27              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-28              [64, 207, 64]             (recursive)
+├─Sequential: 1-21                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-29                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-30              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-29              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-30              [64, 207, 64]             (recursive)
+├─Sequential: 1-23                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-31                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-32              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-31              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-32              [64, 207, 64]             (recursive)
+├─Sequential: 1-25                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-33                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-34              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-33              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-34              [64, 207, 64]             (recursive)
+├─Sequential: 1-27                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-35                      [64, 207, 1]              (recursive)
+├─ModuleList: 1-28                       --                        (recursive)
+│    └─STMetaGCRUCell: 2-36              [64, 207, 64]             (recursive)
+│    │    └─STMetaGCN: 3-35              [64, 207, 128]            (recursive)
+│    │    └─STMetaGCN: 3-36              [64, 207, 64]             (recursive)
+├─Sequential: 1-29                       [64, 207, 1]              (recursive)
+│    └─Linear: 2-37                      [64, 207, 1]              (recursive)
+==========================================================================================
+Total params: 253,933
+Trainable params: 253,933
+Non-trainable params: 0
+Total mult-adds (M): 3.13
+==========================================================================================
+Input size (MB): 1.91
+Forward/backward pass size (MB): 95.07
+Params size (MB): 0.89
+Estimated Total Size (MB): 97.87
+==========================================================================================
+
+Loss: MaskedMAELoss
+
+2023-04-22 11:45:36.623747 Epoch 1  	Train Loss = 4.03520 Val Loss = 3.34648
+2023-04-22 11:47:17.781743 Epoch 2  	Train Loss = 3.42250 Val Loss = 3.16267
+2023-04-22 11:49:00.344446 Epoch 3  	Train Loss = 3.25187 Val Loss = 3.02206
+2023-04-22 11:50:42.714416 Epoch 4  	Train Loss = 3.12754 Val Loss = 2.98118
+2023-04-22 11:52:26.483844 Epoch 5  	Train Loss = 3.04268 Val Loss = 2.95875
+2023-04-22 11:54:10.713810 Epoch 6  	Train Loss = 2.98960 Val Loss = 2.90709
+2023-04-22 11:55:51.907595 Epoch 7  	Train Loss = 2.93563 Val Loss = 2.89020
+2023-04-22 11:57:31.288992 Epoch 8  	Train Loss = 2.89473 Val Loss = 2.88846
+2023-04-22 11:59:11.561390 Epoch 9  	Train Loss = 2.87012 Val Loss = 2.86603
+2023-04-22 12:00:52.307380 Epoch 10  	Train Loss = 2.83527 Val Loss = 2.88745
+2023-04-22 12:02:33.312331 Epoch 11  	Train Loss = 2.80370 Val Loss = 2.85677
+2023-04-22 12:04:16.641911 Epoch 12  	Train Loss = 2.78805 Val Loss = 2.88677
+2023-04-22 12:06:01.493610 Epoch 13  	Train Loss = 2.76520 Val Loss = 2.87814
+2023-04-22 12:07:45.836170 Epoch 14  	Train Loss = 2.73839 Val Loss = 2.87716
+2023-04-22 12:09:28.912996 Epoch 15  	Train Loss = 2.72436 Val Loss = 2.90309
+2023-04-22 12:11:10.071475 Epoch 16  	Train Loss = 2.71308 Val Loss = 2.87647
+2023-04-22 12:12:50.977669 Epoch 17  	Train Loss = 2.69467 Val Loss = 2.89592
+2023-04-22 12:14:31.810917 Epoch 18  	Train Loss = 2.67984 Val Loss = 2.89815
+2023-04-22 12:16:12.699846 Epoch 19  	Train Loss = 2.67378 Val Loss = 2.87775
+2023-04-22 12:17:55.348726 Epoch 20  	Train Loss = 2.66297 Val Loss = 2.88780
+2023-04-22 12:19:39.592088 Epoch 21  	Train Loss = 2.65170 Val Loss = 2.89960
+2023-04-22 12:21:24.627362 Epoch 22  	Train Loss = 2.64325 Val Loss = 2.90043
+2023-04-22 12:23:07.341822 Epoch 23  	Train Loss = 2.63406 Val Loss = 2.89919
+2023-04-22 12:24:48.324735 Epoch 24  	Train Loss = 2.63044 Val Loss = 2.88940
+2023-04-22 12:26:28.823238 Epoch 25  	Train Loss = 2.61958 Val Loss = 2.89024
+2023-04-22 12:28:09.478221 Epoch 26  	Train Loss = 2.61374 Val Loss = 2.87827
+2023-04-22 12:29:50.107102 Epoch 27  	Train Loss = 2.60812 Val Loss = 2.88333
+2023-04-22 12:31:31.621178 Epoch 28  	Train Loss = 2.59897 Val Loss = 2.89829
+2023-04-22 12:33:15.747442 Epoch 29  	Train Loss = 2.59551 Val Loss = 2.89674
+2023-04-22 12:35:00.505068 Epoch 30  	Train Loss = 2.59193 Val Loss = 2.88250
+2023-04-22 12:36:43.600430 Epoch 31  	Train Loss = 2.58386 Val Loss = 2.89324
+2023-04-22 12:38:24.893440 Epoch 32  	Train Loss = 2.57962 Val Loss = 2.89151
+2023-04-22 12:40:04.875496 Epoch 33  	Train Loss = 2.57682 Val Loss = 2.90316
+2023-04-22 12:41:45.323656 Epoch 34  	Train Loss = 2.57274 Val Loss = 2.90302
+2023-04-22 12:43:26.040668 Epoch 35  	Train Loss = 2.57283 Val Loss = 2.89680
+2023-04-22 12:45:07.443692 Epoch 36  	Train Loss = 2.56976 Val Loss = 2.91126
+2023-04-22 12:46:50.006892 Epoch 37  	Train Loss = 2.55948 Val Loss = 2.89672
+2023-04-22 12:48:33.648136 Epoch 38  	Train Loss = 2.56353 Val Loss = 2.92695
+2023-04-22 12:50:15.210807 Epoch 39  	Train Loss = 2.56117 Val Loss = 2.91239
+2023-04-22 12:51:54.210981 Epoch 40  	Train Loss = 2.55353 Val Loss = 2.89799
+2023-04-22 12:53:30.663932 Epoch 41  	Train Loss = 2.55224 Val Loss = 2.91028
+Early stopping at epoch: 41
+Best at epoch 11:
+Train Loss = 2.80370
+Train RMSE = 4.83876, MAE = 2.54607, MAPE = 6.40053
+Val Loss = 2.85677
+Val RMSE = 6.16670, MAE = 2.94490, MAPE = 8.17871
+--------- Test ---------
+All Steps RMSE = 6.53714, MAE = 3.21932, MAPE = 8.69208
+Step 1 RMSE = 4.11514, MAE = 2.39388, MAPE = 5.90237
+Step 2 RMSE = 4.87938, MAE = 2.64672, MAPE = 6.66051
+Step 3 RMSE = 5.43348, MAE = 2.83194, MAPE = 7.27945
+Step 4 RMSE = 5.89509, MAE = 2.99174, MAPE = 7.83386
+Step 5 RMSE = 6.27112, MAE = 3.13034, MAPE = 8.32115
+Step 6 RMSE = 6.58642, MAE = 3.25232, MAPE = 8.76165
+Step 7 RMSE = 6.85644, MAE = 3.35763, MAPE = 9.14737
+Step 8 RMSE = 7.08812, MAE = 3.45154, MAPE = 9.49170
+Step 9 RMSE = 7.28861, MAE = 3.53406, MAPE = 9.80387
+Step 10 RMSE = 7.46799, MAE = 3.60947, MAPE = 10.09176
+Step 11 RMSE = 7.63182, MAE = 3.68047, MAPE = 10.36946
+Step 12 RMSE = 7.79069, MAE = 3.75179, MAPE = 10.64198
+Inference time: 7.48 s

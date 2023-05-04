@@ -1,0 +1,87 @@
+METRLA:
+  num_nodes: 207
+  in_steps: 12
+  out_steps: 12
+
+  time_of_day: True
+  day_of_week: True
+
+  lr: 0.002
+  weight_decay: 0
+  early_stop: 20
+  milestones: [40, 100]
+  clip_grad: False
+  batch_size: 64
+  max_epochs: 200
+  use_cl: True
+  cl_step_size: 2500
+
+  pass_device: True
+
+  model_args:
+    device: None
+    num_nodes: 207
+    node_emb_file: "../data/METRLA/spatial_embeddings.npz"
+    adj_path: "../data/METRLA/adj_mx.pkl"
+    adj_type: "doubletransition"
+    in_steps: 12
+    out_steps: 12
+    input_dim: 1
+    output_dim: 1
+    gru_hidden_dim: 32
+    tod_embedding_dim: 24
+    dow_embedding_dim: 7
+    node_embedding_dim: 64
+    learner_hidden_dim: 128
+    z_dim: 64
+    num_layers: 3
+    seq2seq: True
+    cheb_k: 3
+    add_01_adj: False
+    add_meta_adj: True
+    add_meta_att: False
+    use_adp_adj: False
+
+
+PEMSBAY:
+  num_nodes: 325
+  in_steps: 12
+  out_steps: 12
+
+  time_of_day: True
+  day_of_week: True
+
+  lr: 0.002
+  weight_d0ecay: 0
+  milestones: [40, 100]
+  clip_grad: False
+  batch_size: 64
+  max_epochs: 200
+  use_cl: False
+  
+  pass_device: True
+
+  model_args:
+    cheb_k: 3
+    num_nodes: 325
+    node_emb_file: "../data/PEMSBAY/spatial_embeddings.npz"
+    adj_path: "../data/PEMSBAY/adj_mx.pkl"
+    adj_type: "doubletransition"
+    in_steps: 12
+    out_steps: 12
+    input_dim: 1
+    output_dim: 1
+    gru_hidden_dim: 32
+    tod_embedding_dim: 24
+    dow_embedding_dim: 7
+    node_embedding_dim: 64
+    learner_hidden_dim: 128
+    z_dim: 64
+    num_layers: 2
+    seq2seq: True
+    cheb_k: 4
+    add_01_adj: False
+    add_meta_adj: True
+    add_meta_att: False
+    
+  
