@@ -478,7 +478,7 @@ class GWNET(nn.Module):
 
 
             if self.gcn_bool and self.supports is not None:
-                if self.addaptadj and not self.use_meta :
+                if self.addaptadj and not self.add_meta_adj :
                     x = self.gconv[i](x, new_supports)
                 else:
                     x = self.gconv[i](x,self.supports)
