@@ -2,9 +2,108 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import numbers
+import scipy.sparse as sp
+import scipy.sparse.linalg as linalg
+import pickle
+import pandas as pd
 import numpy as np
 
 
+def load_pickle(pickle_file):
+    try:
+        with open(pickle_file, "rb") as f:
+            pickle_data = pickle.load(f)
+    except UnicodeDecodeError as e:
+        with open(pickle_file, "rb") as f:
+            pickle_data = pickle.load(f, encoding="latin1")
+    except Exception as e:
+        print("Unable to load data ", pickle_file, ":", e)
+        raise
+    return pickle_data
+
+
+def sym_adj(adj):
+    """Symmetrically normalize adjacency matrix."""
+    adj = sp.coo_matrix(adj)
+    rowsum = np.array(adj.sum(1))
+    d_inv_sqrt = np.power(rowsum, -0.5).flatten()
+    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
+    d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+    return (
+        adj.dot(d_mat_inv_sqrt)
+        .transpose()
+        .dot(d_mat_inv_sqrt)
+        .astype(np.float32)
+        .todense()
+    )
+
+
+def asym_adj(adj):
+    adj = sp.coo_matrix(adj)
+    rowsum = np.array(adj.sum(1)).flatten()
+    d_inv = np.power(rowsum, -1).flatten()
+    d_inv[np.isinf(d_inv)] = 0.0
+    d_mat = sp.diags(d_inv)
+    return d_mat.dot(adj).astype(np.float32).todense()
+
+
+def calculate_normalized_laplacian(adj):
+    """
+    # L = D^-1/2 (D-A) D^-1/2 = I - D^-1/2 A D^-1/2
+    # D = diag(A 1)
+    :param adj:
+    :return:
+    """
+    adj = sp.coo_matrix(adj)
+    d = np.array(adj.sum(1))
+    d_inv_sqrt = np.power(d, -0.5).flatten()
+    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
+    d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+    normalized_laplacian = (
+        sp.eye(adj.shape[0])
+        - adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
+    )
+    return normalized_laplacian
+
+
+def calculate_scaled_laplacian(adj_mx, lambda_max=2, undirected=True):
+    if undirected:
+        adj_mx = np.maximum.reduce([adj_mx, adj_mx.T])
+    L = calculate_normalized_laplacian(adj_mx)
+    if lambda_max is None:
+        lambda_max, _ = linalg.eigsh(L, 1, which="LM")
+        lambda_max = lambda_max[0]
+    L = sp.csr_matrix(L)
+    M, _ = L.shape
+    I = sp.identity(M, format="csr", dtype=L.dtype)
+    L = (2 / lambda_max * L) - I
+    return L.astype(np.float32).todense()
+
+
+def load_adj(pkl_filename, adjtype):
+    try:
+        # METRLA and PEMSBAY
+        _, _, adj_mx = load_pickle(pkl_filename)
+    except ValueError:
+        # PEMS3478
+        adj_mx = load_pickle(pkl_filename)
+        
+    if adjtype == "scalap":
+        adj = [calculate_scaled_laplacian(adj_mx)]
+    elif adjtype == "normlap":
+        adj = [calculate_normalized_laplacian(adj_mx).astype(np.float32).todense()]
+    elif adjtype == "symnadj":
+        adj = [sym_adj(adj_mx)]
+    elif adjtype == "transition":
+        adj = [asym_adj(adj_mx)]
+    elif adjtype == "doubletransition":
+        adj = [asym_adj(adj_mx), asym_adj(np.transpose(adj_mx))]
+    elif adjtype == "identity":
+        adj = [np.diag(np.ones(adj_mx.shape[0])).astype(np.float32)]
+    else:
+        error = 0
+        assert error, "adj type not defined"
+    return adj
 class graph_constructor(nn.Module):         # uni-directed: M1M2-M2M1
     def __init__(self, nnodes, k, dim, device, alpha=3, static_feat=None):
         super(graph_constructor, self).__init__()
@@ -57,7 +156,7 @@ class graph_constructor(nn.Module):         # uni-directed: M1M2-M2M1
             nodevec2 = torch.tanh(self.alpha*self.lin1(self.meta_nodevec2)) 
             a = torch.bmm(nodevec1, nodevec2.transpose(1,2))-torch.bmm(nodevec2, nodevec1.transpose(1,2))
 
-            adj = F.relu(torch.tanh(self.alpha*a)) # N N 
+            adj = F.relu(torch.tanh(self.alpha*a)) # B N N 
             mask = torch.zeros(batch_size, idx.size(0), idx.size(0)).to(self.device)
             mask.fill_(float('0'))
             s1,t1 = adj.topk(self.k,2)          # top-k sparsify
@@ -74,31 +173,38 @@ class mixprop(nn.Module):
         self.gdep = gdep
         self.dropout = dropout
         self.alpha = alpha
+        self.meta_adj = None
 
+    def set_meta_adj(self, G):
+        self.meta_adj = G
+
+    def set_meta_att(self, A):
+        self.nconv.set_meta_att(A)
 
     def forward(self,x,adj):
         # print('mixprop adj:', adj.shape)
-        if len(adj.shape) == 3:
+        h = x
+        out = [h]
+        if self.meta_adj is not None:
             batch_size = adj.shape[0]
             num_nodes = adj.shape[1]
             adj = adj + torch.eye(num_nodes).expand(batch_size, num_nodes, num_nodes).to(x.device)
-            d = adj.sum(2)
-            # print('d1:',d.shape)
+            d = torch.sum(adj, dim=2)
             d = torch.unsqueeze(d, -1)
-            # print('d2:',d.shape)
-            # a = adj / d.view(-1, 1)
-            a = torch.div(adj, d)
-            # print('a:', a.shape)
-        else:
+            a = torch.div(adj, d)   
+            meta_h = h
+            for i in range(self.gdep):
+                meta_h = self.alpha*x + (1-self.alpha)*self.nconv(meta_h,a)
+                out.append(meta_h)  
+
+        if adj is not None and len(adj):
             adj = adj + torch.eye(adj.size(0)).to(x.device)
             d = adj.sum(1) # N 
             a = adj / d.view(-1, 1) # N 1
-        h = x
-        out = [h]
-        
-        for i in range(self.gdep):
-            h = self.alpha*x + (1-self.alpha)*self.nconv(h,a)
-            out.append(h)
+            for i in range(self.gdep):
+                h = self.alpha*x + (1-self.alpha)*self.nconv(h,a)
+                out.append(h)
+
         ho = torch.cat(out,dim=1)
         ho = self.mlp(ho)
         return ho
@@ -107,12 +213,18 @@ class mixprop(nn.Module):
 class nconv(nn.Module):
     def __init__(self):
         super(nconv,self).__init__()
+        self.meta_att = None
+
+    def set_meta_att(self, A):
+        self.meta_att = A
 
     def forward(self,x, A):
         if len(A.shape)==2:
             x = torch.einsum('ncvl,vw->ncwl',(x,A))
         else:
             x = torch.einsum('ncvl,nvw->ncwl',(x,A))
+        if self.meta_att is not None:
+            x = torch.einsum('bin,bcnk->bcik',(self.meta_att,x))
         return x.contiguous()
 
 
@@ -187,7 +299,8 @@ class MTGNN(nn.Module):
                  gcn_depth, 
                  num_nodes, 
                  device, 
-                 predefined_A=None, 
+                #  predefined_A=None, 
+                 adj_path = None, 
                  static_feat=None, 
                  dropout=0.3, 
                  subgraph_size=20, 
@@ -205,6 +318,7 @@ class MTGNN(nn.Module):
                  tanhalpha=3, 
                  layer_norm_affline=True,
                  add_meta_adj=False,
+                 add_meta_att=False,
                  node_emb_file=None,
                  tod_embedding_dim=24,
                  dow_embedding_dim=7,
@@ -217,6 +331,15 @@ class MTGNN(nn.Module):
         self.buildA_true = buildA_true
         self.num_nodes = num_nodes
         self.dropout = dropout
+        if adj_path is not None:
+            adj_mx = load_adj(adj_path, "transition")
+            predefined_A = torch.tensor(adj_mx[0]).to(device)
+            # predefined_A = [torch.tensor(i).to(device) for i in adj_mx][0]
+
+        else:
+            predefined_A = None
+        self.device = device
+        
         self.predefined_A = predefined_A
         self.filter_convs = nn.ModuleList()
         self.gate_convs = nn.ModuleList()
@@ -229,7 +352,8 @@ class MTGNN(nn.Module):
                                     out_channels=residual_channels,
                                     kernel_size=(1, 1))
         self.add_meta_adj = add_meta_adj
-        self.use_meta = self.add_meta_adj
+        self.add_meta_att = add_meta_att
+        self.use_meta = self.add_meta_adj or self.add_meta_att
         self.st_embedding_dim = (
             tod_embedding_dim + dow_embedding_dim + node_embedding_dim
         )
@@ -264,12 +388,37 @@ class MTGNN(nn.Module):
                 )    
 
             if self.add_meta_adj:
+                if adj_path is not None:
+                    gcn_depth *= 2
+
                 self.adj_learner1 = nn.Sequential(
                     nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
                     nn.ReLU(inplace=True),
                     nn.Linear(learner_hidden_dim, node_dim),
                 ) 
                 self.adj_learner2 = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, node_dim),
+                )  
+                self.adj_learner = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, node_dim),
+                )  
+
+            if self.add_meta_att:
+                self.att_learner1 = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, node_dim),
+                ) 
+                self.att_learner2 = nn.Sequential(
+                    nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(learner_hidden_dim, node_dim),
+                )  
+                self.att_learner = nn.Sequential(
                     nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
                     nn.ReLU(inplace=True),
                     nn.Linear(learner_hidden_dim, node_dim),
@@ -358,7 +507,7 @@ class MTGNN(nn.Module):
             
             meta_input = torch.concat(
                 [node_embedding, tod_embedding, dow_embedding], dim=-1
-            )  # (B, N, st_emb_dim)
+            ).to(x.device)  # (B, N, st_emb_dim)
 
             if self.z_dim > 0:
                 z_input = x.squeeze(dim=-1).transpose(1, 2)
@@ -376,9 +525,20 @@ class MTGNN(nn.Module):
                 )  # (B, N, st_emb_dim+z_dim)
 
             if self.add_meta_adj:
-                meta_nodevec1 = self.adj_learner1(meta_input)
-                meta_nodevec2 = self.adj_learner2(meta_input)
-                self.gc.set_nodevec(meta_nodevec1, meta_nodevec2)
+                # meta_nodevec1 = self.adj_learner1(meta_input)
+                # meta_nodevec2 = self.adj_learner2(meta_input)
+                # self.gc.set_nodevec(meta_nodevec1, meta_nodevec2)
+                adj_embeddings = self.adj_learner(meta_input)
+                meta_adp = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [adj_embeddings, adj_embeddings.transpose(1, 2)])), dim=-1)
+
+
+            if self.add_meta_att:
+                assert self.predefined_A is not None
+                att_embeddings = self.att_learner(meta_input)
+                meta_att = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [att_embeddings, att_embeddings.transpose(1, 2)])), dim=-1)
+                for i in range(self.layers):
+                    self.gconv1[i].set_meta_att(meta_att)
+                    self.gconv2[i].set_meta_att(meta_att)
 
         input = input.permute(0, 3, 2, 1)
         seq_len = input.size(3)
@@ -388,7 +548,9 @@ class MTGNN(nn.Module):
             input = nn.functional.pad(input,(self.receptive_field-self.seq_length,0,0,0))
 
         if self.gcn_true:
-            if self.buildA_true:
+            if self.add_meta_adj and self.predefined_A is None:
+                adp = meta_adp
+            elif self.buildA_true:
                 if idx is None:
                     adp = self.gc(self.idx)
                 else:
@@ -410,7 +572,7 @@ class MTGNN(nn.Module):
             s = self.skip_convs[i](s)
             skip = s + skip
             if self.gcn_true:
-                if self.add_meta_adj:
+                if self.add_meta_adj and self.predefined_A is None:
                     x = self.gconv1[i](x, adp)+self.gconv2[i](x, adp.transpose(1,2))
                 else:
                     x = self.gconv1[i](x, adp)+self.gconv2[i](x, adp.transpose(1,0))

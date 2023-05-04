@@ -9,9 +9,10 @@ METRLA:
   time_of_day: True
   day_of_week: True
   
-  lr: 0.001
+  lr: 0.002
   weight_decay: 0.0001
-  milestones: [100]
+  early_stop: 10
+  milestones: [80, 100]
   clip_grad: 5
   batch_size: 64
   max_epochs: 200
@@ -25,11 +26,12 @@ METRLA:
     in_dim: 2
     seq_length: 12
     out_dim: 12
-    device: null # will be updated
+    device: None # will be updated
     gcn_true: True
-    buildA_true: True
+    buildA_true: False
     gcn_depth: 2
-    predefined_A: null
+    adj_path: "../data/METRLA/adj_mx.pkl"
+    # predefined_A: null
     static_feat: null
     dropout: 0.3
     subgraph_size: 20 # topk
@@ -49,7 +51,8 @@ METRLA:
     node_embedding_dim: 64
     learner_hidden_dim: 128
     z_dim: 64
-    add_meta_adj: True    
+    add_meta_adj: True
+    add_meta_att: False    
 
 PEMSBAY:
   num_nodes: 325
