@@ -104,6 +104,7 @@ def load_adj(pkl_filename, adjtype):
         error = 0
         assert error, "adj type not defined"
     return adj
+
 class graph_constructor(nn.Module):         # uni-directed: M1M2-M2M1
     def __init__(self, nnodes, k, dim, device, alpha=3, static_feat=None):
         super(graph_constructor, self).__init__()
@@ -185,15 +186,18 @@ class mixprop(nn.Module):
         # print('mixprop adj:', adj.shape)
         h = x
         out = [h]
+        gdep = self.gdep
         if self.meta_adj is not None:
-            batch_size = adj.shape[0]
-            num_nodes = adj.shape[1]
-            adj = adj + torch.eye(num_nodes).expand(batch_size, num_nodes, num_nodes).to(x.device)
-            d = torch.sum(adj, dim=2)
+            if adj is not None and len(adj):
+                gdep = int(self.gdep/2)
+            batch_size = self.meta_adj.shape[0]
+            num_nodes = self.meta_adj.shape[1]
+            meta_adj = self.meta_adj + torch.eye(num_nodes).expand(batch_size, num_nodes, num_nodes).to(x.device)
+            d = torch.sum(meta_adj, dim=2)
             d = torch.unsqueeze(d, -1)
-            a = torch.div(adj, d)   
+            a = torch.div(meta_adj, d)   
             meta_h = h
-            for i in range(self.gdep):
+            for i in range(gdep):
                 meta_h = self.alpha*x + (1-self.alpha)*self.nconv(meta_h,a)
                 out.append(meta_h)  
 
@@ -201,7 +205,7 @@ class mixprop(nn.Module):
             adj = adj + torch.eye(adj.size(0)).to(x.device)
             d = adj.sum(1) # N 
             a = adj / d.view(-1, 1) # N 1
-            for i in range(self.gdep):
+            for i in range(gdep):
                 h = self.alpha*x + (1-self.alpha)*self.nconv(h,a)
                 out.append(h)
 
@@ -335,7 +339,6 @@ class MTGNN(nn.Module):
             adj_mx = load_adj(adj_path, "transition")
             predefined_A = torch.tensor(adj_mx[0]).to(device)
             # predefined_A = [torch.tensor(i).to(device) for i in adj_mx][0]
-
         else:
             predefined_A = None
         self.device = device
@@ -388,8 +391,8 @@ class MTGNN(nn.Module):
                 )    
 
             if self.add_meta_adj:
-                if adj_path is not None:
-                    gcn_depth *= 2
+                if self.predefined_A is not None:
+                    gcn_depth = 2 * gcn_depth
 
                 self.adj_learner1 = nn.Sequential(
                     nn.Linear(self.st_embedding_dim + z_dim, learner_hidden_dim),
@@ -530,7 +533,9 @@ class MTGNN(nn.Module):
                 # self.gc.set_nodevec(meta_nodevec1, meta_nodevec2)
                 adj_embeddings = self.adj_learner(meta_input)
                 meta_adp = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [adj_embeddings, adj_embeddings.transpose(1, 2)])), dim=-1)
-
+                for i in range(self.layers):
+                    self.gconv1[i].set_meta_adj(meta_adp)
+                    self.gconv2[i].set_meta_adj(meta_adp.transpose(1,2))
 
             if self.add_meta_att:
                 assert self.predefined_A is not None
@@ -538,7 +543,7 @@ class MTGNN(nn.Module):
                 meta_att = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [att_embeddings, att_embeddings.transpose(1, 2)])), dim=-1)
                 for i in range(self.layers):
                     self.gconv1[i].set_meta_att(meta_att)
-                    self.gconv2[i].set_meta_att(meta_att)
+                    self.gconv2[i].set_meta_att(meta_att.transpose(1,2))
 
         input = input.permute(0, 3, 2, 1)
         seq_len = input.size(3)
@@ -548,9 +553,7 @@ class MTGNN(nn.Module):
             input = nn.functional.pad(input,(self.receptive_field-self.seq_length,0,0,0))
 
         if self.gcn_true:
-            if self.add_meta_adj and self.predefined_A is None:
-                adp = meta_adp
-            elif self.buildA_true:
+            if self.buildA_true:
                 if idx is None:
                     adp = self.gc(self.idx)
                 else:
@@ -572,10 +575,10 @@ class MTGNN(nn.Module):
             s = self.skip_convs[i](s)
             skip = s + skip
             if self.gcn_true:
-                if self.add_meta_adj and self.predefined_A is None:
-                    x = self.gconv1[i](x, adp)+self.gconv2[i](x, adp.transpose(1,2))
-                else:
+                if adp is not None:
                     x = self.gconv1[i](x, adp)+self.gconv2[i](x, adp.transpose(1,0))
+                else:
+                    x = self.gconv1[i](x, adp)+self.gconv2[i](x, adp)
             else:
                 x = self.residual_convs[i](x)
 

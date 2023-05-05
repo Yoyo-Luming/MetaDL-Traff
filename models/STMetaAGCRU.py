@@ -81,7 +81,6 @@ def calculate_scaled_laplacian(adj_mx, lambda_max=2, undirected=True):
 
 
 def load_adj(filepath, filetype, adjtype):
-    print(filepath, filetype, adjtype)
     if filetype == "pkl":
         try:
             # METRLA and PEMSBAY
@@ -610,7 +609,7 @@ class STMetaAGCRU(nn.Module):
                 for k in range(2, self.cheb_k):
                     support_set.append(torch.matmul(2 * meta_adj, support_set[-1]) - support_set[-2])
                 self.P = torch.stack(support_set,1)
-                print(self.P)
+
         if self.use_adp_adj:
             support = F.softmax(F.relu(torch.mm(self.adp_node_embeddings, self.adp_node_embeddings.transpose(0, 1))), dim=1)
             support_set = [torch.eye(self.num_nodes).to(x.device) , support]

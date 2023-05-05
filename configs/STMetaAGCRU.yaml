@@ -65,7 +65,7 @@ PEMSBAY:
     cheb_k: 3
     num_nodes: 325
     node_emb_file: "../data/PEMSBAY/spatial_embeddings.npz"
-    adj_path: "../data/PEMSBAY/adj_mx.pkl"
+    adj_path: "../data/PEMSBAY/adj_mx_bay.pkl"
     adj_type: "doubletransition"
     in_steps: 12
     out_steps: 12

@@ -57,7 +57,7 @@ PEMSBAY:
     rnn_units: 64
     num_layers: 1
     cheb_k: 3
-    adj_path: "../data/METRLA/adj_mx_bay.pkl"
+    adj_path: "../data/PEMSBAY/adj_mx_bay.pkl"
     adj_type: "doubletransition"
     device: null # will be updated
     

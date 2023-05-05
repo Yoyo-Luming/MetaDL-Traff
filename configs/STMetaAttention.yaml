@@ -72,5 +72,5 @@ PEMSBAY:
     num_heads: 4
     num_layers: 1
     dropout: 0
-    with_spatial: True
+    with_spatial: False
   
