@@ -193,6 +193,9 @@ class GWNET(nn.Module):
                  z_dim=32,
                  in_steps=12,
                  cheb_k=3,
+                 use_time_meta=True,
+                 use_space_meta=True,
+                 use_z_meta=True,
                  ):
         super(GWNET, self).__init__()
         self.num_nodes = num_nodes
@@ -212,6 +215,9 @@ class GWNET(nn.Module):
         self.add_meta_adj = add_meta_adj
         self.add_meta_att = add_meta_att
         self.use_meta = self.add_meta_adj or self.add_meta_att
+        self.use_time_meta = use_time_meta
+        self.use_space_meta = use_space_meta
+        self.use_z_meta = use_z_meta
         self.st_embedding_dim = (
             tod_embedding_dim + dow_embedding_dim + node_embedding_dim
         )
@@ -305,12 +311,15 @@ class GWNET(nn.Module):
         self.receptive_field = receptive_field
 
         if self.use_meta:
-            self.node_embedding = torch.FloatTensor(np.load(node_emb_file)["data"]).to(device)
-
-            self.tod_onehots = torch.eye(24, device=device)
-            self.dow_onehots = torch.eye(7, device=device)  
             
-            if self.z_dim > 0:
+            if self.use_space_meta:
+                self.node_embedding = torch.FloatTensor(np.load(node_emb_file)["data"]).to(device)
+
+            if self.use_time_meta:
+                self.tod_onehots = torch.eye(24, device=device)
+                self.dow_onehots = torch.eye(7, device=device)  
+            
+            if self.use_z_meta and self.z_dim > 0:
                 self.mu = nn.Parameter(torch.randn(num_nodes, z_dim), requires_grad=True)
                 self.logvar = nn.Parameter(
                     torch.randn(num_nodes, z_dim), requires_grad=True
@@ -369,20 +378,28 @@ class GWNET(nn.Module):
         batch_size = input.shape[0]
 
         if self.use_meta:
-            tod = input[..., 1]  # (B, T_in, N)
-            dow = input[..., 2]  # (B, T_in, N)
-            input = input[..., :2]  # (B, T_in, N, 1)
-                    # use the last time step to represent the temporal location of the time seires
             x = input[..., :1]
-            tod_embedding = self.tod_onehots[(tod[:, -1, :] * 24).long()]  # (B, N, 24)
-            dow_embedding = self.dow_onehots[dow[:, -1, :].long()]  # (B, N, 7)
-            node_embedding = self.node_embedding.expand(
-                batch_size, *self.node_embedding.shape
-            )  # (B, N, node_emb_dim)
-            
-            meta_input = torch.concat(
-                [node_embedding, tod_embedding, dow_embedding], dim=-1
-            )  # (B, N, st_emb_dim)
+            meta_input = None
+            if self.use_time_meta:
+                tod = input[..., 1]  # (B, T_in, N)
+                dow = input[..., 2]  # (B, T_in, N)
+                tod_embedding = self.tod_onehots[(tod[:, -1, :] * 24).long()]  # (B, N, 24)
+                dow_embedding = self.dow_onehots[dow[:, -1, :].long()]  # (B, N, 7)
+                meta_input = torch.concat(
+                    [tod_embedding, dow_embedding], dim=-1
+                )  # (B, N, st_emb_dim)
+
+            if self.use_space_meta:
+                node_embedding = self.node_embedding.expand(
+                    batch_size, *self.node_embedding.shape
+                )  # (B, N, node_emb_dim)
+                if meta_input is None:
+                    meta_input = node_embedding
+                else:
+                    meta_input = torch.concat(
+                        [node_embedding, meta_input], dim=-1
+                    )  # (B, N, st_emb_dim)
+
 
             if self.z_dim > 0:
                 z_input = x.squeeze(dim=-1).transpose(1, 2)
@@ -394,10 +411,13 @@ class GWNET(nn.Module):
                 z_data = z_data + self.reparameterize(
                     self.mu, self.logvar
                 )  # temporal z + spatial z
-                
-                meta_input = torch.concat(
-                    [meta_input, z_data], dim=-1
-                )  # (B, N, st_emb_dim+z_dim)
+
+                if meta_input is None:
+                    meta_input = z_data
+                else:
+                    meta_input = torch.concat(
+                        [meta_input, z_data], dim=-1
+                    )  # (B, N, st_emb_dim)                
 
             if self.add_meta_adj:
                 # adj_embeddings = self.adj_learner(meta_input)
@@ -426,8 +446,9 @@ class GWNET(nn.Module):
                 # target_att_embeddings = self.att_learner2(meta_input)
                 # meta_att = F.softmax(F.relu(torch.einsum('bih,bhj->bij', [source_att_embeddings, target_att_embeddings.transpose(1, 2)])), dim=-1)
                 for i in range(self.blocks * self.layers):
-                    self.gconv[i].set_meta_att(meta_att)               
+                    self.gconv[i].set_meta_att(meta_att)    
 
+        input = input[..., :2]  # (B, T_in, N, 1)
         input = input.permute(0, 3, 2, 1)
         in_len = input.size(3)
         if in_len<self.receptive_field:
